@@ -3752,6 +3752,28 @@ int main(int argc, char** argv) {
             }
             int64_t resume = 0;
             bool from_live = false;
+            // STRATA_CACHE_DEBUG: on a miss, how far the prompt agrees with what is cached - the number
+            // that sizes any prefix-reuse scheme (agent clients edit history mid-conversation, and the
+            // reuse ceiling is the first edit's position, not the shared tail's length)
+            static const bool cache_dbg = std::getenv("STRATA_CACHE_DEBUG") != nullptr;
+            if (cache_dbg && o.prompt_cache > 0) {
+                auto lcp = [&](const std::vector<int32_t>& pre) {
+                    const int64_t m = std::min<int64_t>((int64_t) pre.size(), (int64_t) n);
+                    int64_t i = 0;
+                    while (i < m && (int32_t) ids[(size_t) i] == pre[(size_t) i]) ++i;
+                    return i;
+                };
+                if (live_ok) {
+                    const int64_t d = lcp(live);
+                    std::fprintf(stderr, "strata serve: cache: prompt %lld vs live %lld: %s at %lld (%.1f%% of prompt)\n",
+                                 (long long) n, (long long) live.size(),
+                                 d == (int64_t) live.size() && (int64_t) live.size() < n ? "live is a prefix" : "diverged",
+                                 (long long) d, n ? 100.0 * d / n : 0.0);
+                }
+                for (const ConvCheckpoint& c : checks)
+                    std::fprintf(stderr, "strata serve: cache: prompt %lld vs checkpoint %lld: diverged at %lld (%.1f%%)\n",
+                                 (long long) n, (long long) c.ids.size(), (long long) lcp(c.ids), n ? 100.0 * lcp(c.ids) / n : 0.0);
+            }
             if (o.prompt_cache > 0) {
                 if (live_ok && starts_with(live, live_imgs)) { resume = (int64_t) live.size(); from_live = true; }
                 for (const ConvCheckpoint& c : checks)
