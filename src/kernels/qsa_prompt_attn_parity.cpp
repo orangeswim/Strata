@@ -8,7 +8,7 @@
 //   2. the new and old outputs agree to a relative 1e-4 of the output scale;
 // then times both over a prompt chunk (the old one in batches of 32, as prefill.cpp calls it).
 // HIP builds (S6): the same checks for the RDNA4 matrix-core kernel (STRATA_HIP_WMMA), skipped (77) off gfx12.
-// Usage: qsa_prompt_attn_parity [context=32768] [queries=2048] [reps=5]
+// Usage: qsa_prompt_attn_parity [context=32768] [queries=2048] [reps=5] [fmt=-1]
 #include "strata/kernels/qsa.hpp"
 #include "strata/kernels/qsa_decode_attn.hpp"
 #include "strata/kernels/qsa_prompt_attn.hpp"
@@ -72,6 +72,19 @@ int run(int fmt, int64_t ctx, int64_t nq, int reps) {   // fmt 1 int8, 0 fp16, 2
         for (auto& x : vq) x = (int8_t) code(rng);
         for (auto& x : ks) x = f2h(sc(rng));
         for (auto& x : vs) x = f2h(sc(rng));
+    } else if (fmt == 3) {   // K8V4 hybrid (the engine's --kv k8v4): int8 K with scales, q4_0 V
+        kq.resize(rows * HD); ks.resize(rows * 4);
+        for (auto& x : kq) x = (int8_t) code(rng);
+        for (auto& x : ks) x = f2h(sc(rng));
+        v4.resize(rows * ROW4);
+        std::uniform_int_distribution<int> byte(0, 255);
+        std::uniform_real_distribution<float> lg(std::log(0.01f), std::log(1.0f));
+        auto sc4 = [&](std::mt19937& r) { return std::exp(lg(r)) * (byte(r) & 1 ? -1.0f : 1.0f); };
+        for (int64_t b = 0; b < rows * 8; ++b) {
+            const uint16_t d = f2h(sc4(rng));
+            std::memcpy(v4.data() + b * B4, &d, 2);
+            for (int j = 0; j < 16; ++j) v4[b * B4 + 2 + j] = (uint8_t) byte(rng);
+        }
     } else {
         kh.resize(rows * HD); vh.resize(rows * HD);
         for (auto& x : kh) x = f2h(nd(rng) * 1.5f);
@@ -115,6 +128,7 @@ int run(int fmt, int64_t ctx, int64_t nq, int reps) {   // fmt 1 int8, 0 fp16, 2
     }
     k::QsaAttnPools pl;
     if (fmt == 2) { pl.k_q4 = up(k4); pl.v_q4 = up(v4); }
+    else if (fmt == 3) { pl.k_q = up(kq); pl.k_scale = up(ks); pl.v_q4 = up(v4); }
     else if (fmt == 1) { pl.k_q = up(kq); pl.v_q = up(vq); pl.k_scale = up(ks); pl.v_scale = up(vs); }
     else { pl.k_pool = up(kh); pl.v_pool = up(vh); }
     // a q4_0 value: block d / 32 of the row, element j = d % 32 in the low nibble of byte j (j < 16), else the high
@@ -167,7 +181,8 @@ int run(int fmt, int64_t ctx, int64_t nq, int reps) {   // fmt 1 int8, 0 fp16, 2
                 double a = 0;
                 for (int64_t d = 0; d < HD; ++d) {
                     const double kv = fmt == 2 ? q4v(k4, row, d)
-                                      : fmt == 1 ? (double) kq[row * HD + d] * h2f(ks[row * 4 + d / 64]) : h2f(kh[row * HD + d]);
+                                      : fmt == 1 || fmt == 3 ? (double) kq[row * HD + d] * h2f(ks[row * 4 + d / 64])
+                                                             : h2f(kh[row * HD + d]);
                     a += (double) q[(i * NH + h) * HD + d] * kv;
                 }
                 sco[c] = a / 16.0;
@@ -179,7 +194,7 @@ int run(int fmt, int64_t ctx, int64_t nq, int reps) {   // fmt 1 int8, 0 fp16, 2
                 double a = 0;
                 for (int64_t c = 0; c < w; ++c) {
                     const int64_t cell = sel[c], row = ((int64_t) table[cell / PS] * NKV + kvh) * PS + cell % PS;
-                    const double vv = fmt == 2 ? q4v(v4, row, d)
+                    const double vv = fmt == 2 || fmt == 3 ? q4v(v4, row, d)
                                       : fmt == 1 ? (double) vq[row * HD + d] * h2f(vs[row * 4 + d / 64]) : h2f(vh[row * HD + d]);
                     a += sco[c] * vv;
                 }
@@ -212,11 +227,15 @@ int run(int fmt, int64_t ctx, int64_t nq, int reps) {   // fmt 1 int8, 0 fp16, 2
     cudaEventRecord(e1);
     ck(cudaEventSynchronize(e1), "time");
     cudaEventElapsedTime(&ms_new, e0, e1);
-    const bool ok1 = err_new <= std::max(4.0 * err_old, 1e-6 * ref_scale);
-    const bool ok2 = diff <= 1e-4 * scale;
+    // mode 3 (K8V4) stores its dequantized V as FP16 in shared memory - an inherent ~3e-4 relative rounding
+    // the old kernel (FP32 V products) does not have, so its gates carry an absolute floor
+    const double floor1 = fmt == 3 ? 5e-4 * ref_scale : 0, floor2 = fmt == 3 ? 1e-3 * scale : 0;
+    const bool ok1 = err_new <= std::max(4.0 * err_old, 1e-6 * ref_scale) + floor1;
+    const bool ok2 = diff <= 1e-4 * scale + floor2;
     std::printf("%s %s ctx %lld, %lld queries: vs FP64 old %.3g new %.3g (output scale %.3g); new vs old %.3g (%.2g of "
                 "scale); %.3f -> %.3f ms per chunk (%.2fx)\n",
-                ok1 && ok2 ? "PASS" : "FAIL", fmt == 2 ? "q4_0" : fmt == 1 ? "int8" : "fp16", (long long) ctx, (long long) nq, err_old,
+                ok1 && ok2 ? "PASS" : "FAIL", fmt == 2 ? "q4_0" : fmt == 1 ? "int8" : fmt == 3 ? "k8v4" : "fp16",
+                (long long) ctx, (long long) nq, err_old,
                 err_new, ref_scale, diff, diff / scale, ms_old / reps, ms_new / reps, ms_old / ms_new);
     cudaFree((void*) d_ids); cudaFree((void*) d_steps); cudaFree((void*) d_q); cudaFree(d_old); cudaFree(d_new);
     cudaFree(scratch);
@@ -248,15 +267,23 @@ int main(int argc, char** argv) {
     const int64_t ctx = argc > 1 ? std::atoll(argv[1]) : 32768;
     const int64_t nq = argc > 2 ? std::atoll(argv[2]) : 2048;
     const int reps = argc > 3 ? std::atoi(argv[3]) : 5;
+    const int only = argc > 4 ? std::atoi(argv[4]) : -1;   // one format (profiling); -1 runs the suite
     int fails = 0;
-    fails += run(1, ctx, nq, reps);
+    if (only == 1 || only < 0) fails += run(1, ctx, nq, reps);
 #if !defined(__HIP_PLATFORM_AMD__)
-    fails += run(0, ctx, nq, reps);   // FP16 KV: the RDNA4 kernel takes int8 KV only
-    fails += run(2, ctx, nq, reps);   // Q4_0 KV (mode 4)
-    fails += run(2, 1500, std::min<int64_t>(nq, 1500), reps);
+    if (only == 0 || only < 0) fails += run(0, ctx, nq, reps);   // FP16 KV: the RDNA4 kernel takes int8 KV only
+    if (only == 2 || only < 0) {   // Q4_0 KV (mode 4)
+        fails += run(2, ctx, nq, reps);
+        fails += run(2, 1500, std::min<int64_t>(nq, 1500), reps);
+    }
+    if (only == 3 || only < 0) {   // K8V4 (mode 3): the engine's hybrid KV
+        fails += run(3, ctx, nq, reps);
+        fails += run(3, 1500, std::min<int64_t>(nq, 1500), reps);
+        fails += run(3, 2100, std::min<int64_t>(nq, 256), reps);
+    }
 #endif
-    fails += run(1, 1500, std::min<int64_t>(nq, 1500), reps);   // short context: the selection is every cell
-    fails += run(1, 2100, std::min<int64_t>(nq, 256), reps);    // the identity-to-sparse edge
+    if (only == 1 || only < 0) fails += run(1, 1500, std::min<int64_t>(nq, 1500), reps);   // every cell
+    if (only == 1 || only < 0) fails += run(1, 2100, std::min<int64_t>(nq, 256), reps);    // identity-to-sparse edge
     std::printf("FAILURES: %d\n", fails);
     return fails;
 }
