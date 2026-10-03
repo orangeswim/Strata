@@ -1,0 +1,42 @@
+{
+ "exe": "D:\\orange\\devc\\strata\\engine\\strata.exe",
+ "args": [
+  "--pack",
+  "D:\\orange\\devc\\Strata-data\\packs\\coder-iq1_m",
+  "--native",
+  "D:\\orange\\devc\\Strata-data\\models\\coder-IQ1_M\\Qwen3.8-Flash-Next-GSQ-RCO-IQ1_M-00001-of-00002.gguf",
+  "--ple-gguf",
+  "D:\\orange\\devc\\Strata-data\\models\\coder-IQ1_M\\Qwen3.8-Flash-Next-GSQ-RCO-IQ1_M-00002-of-00002.gguf",
+  "--expert-profile",
+  "D:\\orange\\devc\\strata\\data\\expert-profile-coder.bin",
+  "--expert-cache",
+  "auto",
+  "--prefill",
+  "auto",
+  "--spec",
+  "4",
+  "--mtp",
+  "D:\\orange\\devc\\Strata-data\\mtp\\rt",
+  "--max-context",
+  "204800",
+  "--kv",
+  "k8v4",
+  "--spec-min-p",
+  "0.35",
+  "--suffix-draft",
+  "3"
+ ],
+ "cwd": "D:\\orange\\devc\\strata",
+ "tokenizer": "D:\\orange\\devc\\Strata-data\\packs\\coder-iq1_m\\tokenizer",
+ "model_name": "qwen3.8-flash-next-coder-iq1_m",
+ "log": "D:\\orange\\devc\\strata\\strata-coder-iq1_m.log",
+ "lib_dirs": [
+  "C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v13.2\\bin",
+  "C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v13.2\\bin\\x64"
+ ],
+ "port": 8081,
+ "host": "0.0.0.0",
+ "env": {
+  "STRATA_PF_FUSED": "1"
+ }
+}

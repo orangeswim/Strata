@@ -1,0 +1,37 @@
+{
+  "report": "2026-10-03-community-rtx-3090",
+  "measured_by": "orangeswim",
+  "engine": {"commit": "99f3dbd", "tag": "v0.1.38", "main_at_test_time": true, "build": "source, sm_86, CUDA 13.2, MSVC 14.44"},
+  "hardware": {"gpu": "NVIDIA GeForce RTX 3090", "vram_mib": 24576, "pcie": "Gen4 x16 (probe 26.3 GB/s host->device)",
+               "cpu": "AMD Ryzen 7 5800X (8c/16t)", "ram": "32 GB DDR4-3200 (4x8)", "driver": "596.36", "os": "Windows"},
+  "model": {"pack": "coder-iq1_m", "family": "Qwen3.8-Flash-Next-GSQ-RCO (Coder)", "mtp": "installer rt fetch"},
+  "settings": {"max_context": 204800, "kv": "k8v4", "spec": 4, "suffix_draft": 3, "spec_min_p": 0.35,
+               "spec_min_p_default": 0.50, "expert_cache": "auto", "prefill": "auto", "env": {"STRATA_PF_FUSED": "1"}},
+  "workload": "26-needle retrieval, greedy (temp 0), 512-token cap, thinking off, non-streaming; see needle26.sh",
+  "runs": [
+    {"prompt_tokens": 99583, "seed": 42, "cold": {"prompt_ms": 41726, "tok_s": 2387, "reused": 0,
+      "decode_ms": 3393, "decode_tok_s": 91.9, "output_tokens": 298}, "needles": "25/26", "missed_slots": ["5@22%"]},
+    {"prompt_tokens": 99583, "seed": 7, "cold": {"prompt_ms": 40372, "tok_s": 2467, "reused": 0,
+      "decode_ms": 2931, "decode_tok_s": 106.8, "output_tokens": 275}, "needles": "25/26", "missed_slots": ["15@59%"]},
+    {"prompt_tokens": 99583, "seed": 11, "cold": {"prompt_ms": 40463, "tok_s": 2461, "reused": 0,
+      "decode_ms": 3026, "decode_tok_s": 107.4}, "needles": "25/26", "missed_slots": [], "note": "output tokens not captured for this row; decode rate from the script"},
+    {"prompt_tokens": 195897, "seed": 42, "cold": {"prompt_ms": 90062, "tok_s": 2175, "reused": 0,
+      "decode_ms": 2720, "decode_tok_s": 97.0, "output_tokens": 264}, "needles": "21/26",
+      "missed_slots": ["7@29%", "10@40%", "11@44%", "12@48%", "13@51%"]},
+    {"prompt_tokens": 195897, "seed": 7, "cold": {"prompt_ms": 90198, "tok_s": 2172, "reused": 0,
+      "decode_ms": 2373, "decode_tok_s": 106.2, "output_tokens": 252, "drafts": "185/202"}, "needles": "20/26",
+      "missed_slots": ["4@18%", "5@22%", "8@33%", "11@44%", "13@51%", "14@55%"]},
+    {"prompt_tokens": 195897, "seed": 11, "cold": {"prompt_ms": 90396, "tok_s": 2167, "reused": 0,
+      "decode_ms": 3041, "decode_tok_s": 102.6, "output_tokens": 312, "drafts": "226/259"}, "needles": "25/26",
+      "missed_slots": ["14@55%"]}
+  ],
+  "cache_followups": [
+    {"prompt_tokens": 99945, "reused": 99909, "read": 36, "prompt_ms": 307},
+    {"prompt_tokens": 196186, "reused": 196150, "read": 36, "prompt_ms": 303},
+    {"prompt_tokens": 196246, "reused": 196210, "read": 36, "prompt_ms": 298}
+  ],
+  "fact_check": "correct in every run (vote 215-208, date 3 June 2026)",
+  "notes": ["retrieval at ~196K is not run-stable under greedy decoding on this hardware; treat 20-25/26 as the band",
+            "the three runs per size use three seeds, i.e. three different prompts of equal token count",
+            "the client runs from another machine over the network; request bodies are ~0.3-0.6 MB"]
+}

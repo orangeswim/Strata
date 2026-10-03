@@ -15,6 +15,10 @@ and their limits. Report what you actually measured and label estimates separate
 - [2026-09-30: RTX 5090, Core Ultra 9 285K, 64 GB RAM](../bench/results/2026-09-30-community-rtx-5090/README.md):
   Strata 0.1.29, original Flash-Next IQ2_XS, 131,072-token context; three runs
   each at 4,096, 32,768, and 128,000 prompt tokens, plus six recall checks.
+- [2026-10-03: RTX 3090, Ryzen 7 5800X, 32 GB RAM](../bench/results/2026-10-03-community-rtx-3090/README.md):
+  Strata 0.1.38, the Coder IQ1_M pack, 204,800-token context (k8v4 KV); three runs
+  each at ~100K and ~196K prompt tokens, a 26-needle retrieval suite, and cached
+  re-request timings.
 
 ## What to record
 
