@@ -839,7 +839,9 @@ function msgEl(m, i) {
     el.innerHTML = `<details class="st-collapse think" hidden><summary>${icon("thinking", "st-icon st-icon--sm")}<span class="think-title"></span>` +
       `${icon("chevron", "st-icon st-icon--sm st-chev")}</summary><div class="st-collapse__body thinking"></div></details>` +
       `<div class="st-bubble"></div><div class="st-msg__meta"><span class="meta-text"></span>` +
-      `<button class="st-btn st-btn--icon" data-msg-copy aria-label="${esc(tr("chat.copyAnswer", "Copy the answer"))}" title="${esc(tr("chat.copy", "Copy"))}">${icon("copy")}</button></div>`;
+      `<button class="st-btn st-btn--icon" data-msg-detail hidden aria-label="Request details" title="Details">${icon("chevron")}</button>` +
+      `<button class="st-btn st-btn--icon" data-msg-copy aria-label="${esc(tr("chat.copyAnswer", "Copy the answer"))}" title="${esc(tr("chat.copy", "Copy"))}">${icon("copy")}</button></div>` +
+      `<div class="st-msg__detail" hidden></div>`;
     updateAssistant(el, m, false);
   }
   const actions = msgActions(m, i);                 // edit / regenerate / rewind (chats-ui.js), when switched on
@@ -959,6 +961,23 @@ function updateAssistant(el, m, streaming) {
     if (streaming) bubble.classList.add("cursor"); else bubble.classList.remove("cursor");
   }
   el.querySelector(".meta-text").textContent = m.meta || (streaming ? "" : m.stopped ? tr("chat.stopped", "Stopped") : "");
+  const dbtn = el.querySelector("[data-msg-detail]");
+  if (dbtn) {
+    dbtn.hidden = streaming || !m.timings;
+    dbtn.classList.toggle("open", !!m.detailOpen);
+    const drow = el.querySelector(".st-msg__detail");
+    if (drow && m.timings && m.detailOpen) {
+      const t = m.timings;
+      const read = t.prompt_n != null ? t.prompt_n : null;
+      const parts = [];
+      if (read != null) parts.push(`read ${fmt(read)} tokens${t.prompt_per_second ? ` @ ${fmt(t.prompt_per_second)} tok/s` : ""}`);
+      if (t.cache_n) parts.push(`${fmt(t.cache_n)} reused`);
+      if (t.prompt_ms != null) parts.push(`TTFT ${fmt(t.prompt_ms / 1000, 1)} s`);
+      if (t.draft_n != null) parts.push(`drafts ${fmt(t.draft_n_accepted)} of ${fmt(t.draft_n)} accepted`);
+      drow.textContent = parts.join(" · ");
+      drow.hidden = false;
+    } else if (drow) drow.hidden = true;
+  }
   el.querySelector("[data-msg-copy]").hidden = streaming || !m.text;
 }
 function renderChat() {
@@ -1024,6 +1043,13 @@ $("chat").addEventListener("click", (e) => {
     const run = fr.dataset.scripts !== "1";
     if (run && !confirm(tr("preview.confirm", "Run this code with scripts?\n\nIt runs in your browser, cut off from this chat and from the network, but it can still freeze the tab, and it is code the model wrote.\n\nOnly this block, and only until you close the preview."))) return;
     fillPreview(fr, run);
+  }
+  const md = e.target.closest("[data-msg-detail]");
+  if (md) {
+    const el = md.closest(".st-msg"), m = messages[+el.dataset.i];
+    if (!m) return;
+    m.detailOpen = !m.detailOpen;
+    updateAssistant(el, m, !!busy && busy.msg === m);
     return;
   }
   const mc = e.target.closest("[data-msg-copy]");
@@ -1252,6 +1278,7 @@ async function generateReply() {
         try { j = JSON.parse(data); } catch (e) { continue; }
         if (j.error) throw new Error(j.error.message || tr("toast.engineError", "the engine reported an error"));
         if (j.usage) usage = j.usage;
+        if (j.timings) m.timings = j.timings;
         if (j.strata_mcp) {
           onTool(m, j.strata_mcp);
           // an interjection waited for a running tool: it has its result now, so the answer can stop

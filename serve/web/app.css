@@ -341,3 +341,11 @@ main { flex: 1; min-height: 0; display: flex; }
 /* a message may use the room a wide window gives the chat column (#3176 widened the column; the kit's 720px kept the messages narrow in it) */
 .st-msg { max-width: min(100%, 900px); }
 .st-toast .st-btn { white-space: nowrap; }
+
+/* the request-detail row the chat meta's chevron opens: one muted line, the same rhythm as the meta */
+.st-msg__detail { font-size: 12px; opacity: .7; padding: 0 12px 6px; }
+[data-msg-detail] .st-icon { transition: transform .15s ease; }
+[data-msg-detail].open .st-icon { transform: rotate(180deg); }
+
+/* long unbroken strings (URLs, paths, hashes) must wrap inside bubbles and detail rows */
+.st-bubble, .st-collapse__body, .st-msg__detail { overflow-wrap: anywhere; word-break: break-word; }
